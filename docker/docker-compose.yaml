@@ -723,6 +723,8 @@ services:
       <<: *shared-api-worker-env
       # Startup mode, 'api' starts the API server.
       MODE: api
+      # Override OTEL service name for API container.
+      APPLICATION_NAME: langgenius/dify-api
       SENTRY_DSN: ${API_SENTRY_DSN:-}
       SENTRY_TRACES_SAMPLE_RATE: ${API_SENTRY_TRACES_SAMPLE_RATE:-1.0}
       SENTRY_PROFILES_SAMPLE_RATE: ${API_SENTRY_PROFILES_SAMPLE_RATE:-1.0}
@@ -765,6 +767,8 @@ services:
       <<: *shared-api-worker-env
       # Startup mode, 'worker' starts the Celery worker for processing all queues.
       MODE: worker
+      # Override OTEL service name for worker container.
+      APPLICATION_NAME: langgenius/dify-worker
       SENTRY_DSN: ${API_SENTRY_DSN:-}
       SENTRY_TRACES_SAMPLE_RATE: ${API_SENTRY_TRACES_SAMPLE_RATE:-1.0}
       SENTRY_PROFILES_SAMPLE_RATE: ${API_SENTRY_PROFILES_SAMPLE_RATE:-1.0}
@@ -804,6 +808,8 @@ services:
       <<: *shared-api-worker-env
       # Startup mode, 'worker_beat' starts the Celery beat for scheduling periodic tasks.
       MODE: beat
+      # Override OTEL service name for beat container.
+      APPLICATION_NAME: langgenius/dify-worker-beat
     depends_on:
       init_permissions:
         condition: service_completed_successfully
