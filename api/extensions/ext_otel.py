@@ -11,6 +11,49 @@ from dify_app import DifyApp
 logger = logging.getLogger(__name__)
 
 
+def _parse_header_pairs(raw_headers: str) -> dict[str, str]:
+    """
+    Parse headers from "k1=v1,k2=v2" format.
+    """
+    parsed: dict[str, str] = {}
+    for item in (raw_headers or "").split(","):
+        part = item.strip()
+        if not part or "=" not in part:
+            continue
+        key, value = part.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key:
+            parsed[key] = value
+    return parsed
+
+
+def _build_http_headers(*, signal_headers: str, common_headers: str, api_key: str) -> dict[str, str] | None:
+    headers = _parse_header_pairs(common_headers)
+    headers.update(_parse_header_pairs(signal_headers))
+    if headers:
+        return headers
+    if api_key:
+        return {"Authorization": f"Bearer {api_key}"}
+    return None
+
+
+def _build_grpc_headers(
+    *,
+    signal_headers: str,
+    common_headers: str,
+    api_key: str,
+) -> tuple[tuple[str, str], ...] | None:
+    headers = _parse_header_pairs(common_headers)
+    headers.update(_parse_header_pairs(signal_headers))
+    if headers:
+        # gRPC metadata keys are expected to be lowercase.
+        return tuple((key.lower(), value) for key, value in headers.items())
+    if api_key:
+        return (("authorization", f"Bearer {api_key}"),)
+    return None
+
+
 def init_app(app: DifyApp):
     from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter as GRPCMetricExporter
     from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter as GRPCSpanExporter
@@ -59,34 +102,51 @@ def init_app(app: DifyApp):
     protocol = (dify_config.OTEL_EXPORTER_OTLP_PROTOCOL or "").lower()
     if dify_config.OTEL_EXPORTER_TYPE == "otlp":
         if protocol == "grpc":
+            trace_headers = _build_grpc_headers(
+                signal_headers=dify_config.OTLP_TRACE_HEADERS,
+                common_headers=dify_config.OTLP_HEADERS,
+                api_key=dify_config.OTLP_API_KEY,
+            )
             exporter = GRPCSpanExporter(
                 endpoint=dify_config.OTLP_BASE_ENDPOINT,
-                # Header field names must consist of lowercase letters, check RFC7540
-                headers=(("authorization", f"Bearer {dify_config.OTLP_API_KEY}"),),
+                headers=trace_headers,
                 insecure=True,
+            )
+            metric_headers = _build_grpc_headers(
+                signal_headers=dify_config.OTLP_METRIC_HEADERS,
+                common_headers=dify_config.OTLP_HEADERS,
+                api_key=dify_config.OTLP_API_KEY,
             )
             metric_exporter = GRPCMetricExporter(
                 endpoint=dify_config.OTLP_BASE_ENDPOINT,
-                headers=(("authorization", f"Bearer {dify_config.OTLP_API_KEY}"),),
+                headers=metric_headers,
                 insecure=True,
             )
         else:
-            headers = {"Authorization": f"Bearer {dify_config.OTLP_API_KEY}"} if dify_config.OTLP_API_KEY else None
-
+            trace_headers = _build_http_headers(
+                signal_headers=dify_config.OTLP_TRACE_HEADERS,
+                common_headers=dify_config.OTLP_HEADERS,
+                api_key=dify_config.OTLP_API_KEY,
+            )
             trace_endpoint = dify_config.OTLP_TRACE_ENDPOINT
             if not trace_endpoint:
                 trace_endpoint = dify_config.OTLP_BASE_ENDPOINT + "/v1/traces"
             exporter = HTTPSpanExporter(
                 endpoint=trace_endpoint,
-                headers=headers,
+                headers=trace_headers,
             )
 
+            metric_headers = _build_http_headers(
+                signal_headers=dify_config.OTLP_METRIC_HEADERS,
+                common_headers=dify_config.OTLP_HEADERS,
+                api_key=dify_config.OTLP_API_KEY,
+            )
             metric_endpoint = dify_config.OTLP_METRIC_ENDPOINT
             if not metric_endpoint:
                 metric_endpoint = dify_config.OTLP_BASE_ENDPOINT + "/v1/metrics"
             metric_exporter = HTTPMetricExporter(
                 endpoint=metric_endpoint,
-                headers=headers,
+                headers=metric_headers,
             )
     else:
         exporter = ConsoleSpanExporter()

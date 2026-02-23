@@ -1,3 +1,4 @@
+import json
 import logging
 import time
 import uuid
@@ -24,6 +25,114 @@ from core.model_runtime.entities.model_entities import (
 from core.model_runtime.model_providers.__base.ai_model import AIModel
 
 logger = logging.getLogger(__name__)
+
+
+class _GenAIAttr:
+    PROVIDER_NAME = "gen_ai.provider.name"
+    OPERATION_NAME = "gen_ai.operation.name"
+    REQUEST_MODEL = "gen_ai.request.model"
+    RESPONSE_MODEL = "gen_ai.response.model"
+    INPUT_MESSAGES = "gen_ai.input.messages"
+    OUTPUT_MESSAGES = "gen_ai.output.messages"
+    USAGE_INPUT_TOKENS = "gen_ai.usage.input_tokens"
+    USAGE_OUTPUT_TOKENS = "gen_ai.usage.output_tokens"
+    USAGE_TOTAL_TOKENS = "gen_ai.usage.total_tokens"
+    RESPONSE_FINISH_REASONS = "gen_ai.response.finish_reasons"
+
+
+def _to_text_parts(content: str | list[PromptMessageContentUnionTypes] | None) -> list[dict[str, str]]:
+    if content is None:
+        return []
+
+    if isinstance(content, str):
+        return [{"type": "text", "content": content}]
+
+    parts: list[dict[str, str]] = []
+    for item in content:
+        if hasattr(item, "data"):
+            item_value = getattr(item, "data", "")
+            parts.append({"type": "text", "content": str(item_value)})
+        else:
+            parts.append({"type": "text", "content": str(item)})
+    return parts
+
+
+def _safe_json(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def _format_input_messages(prompt_messages: Sequence[PromptMessage]) -> str:
+    messages: list[dict[str, object]] = []
+    for message in prompt_messages:
+        role = getattr(message.role, "value", str(message.role))
+        messages.append(
+            {
+                "role": role,
+                "name": message.name,
+                "parts": _to_text_parts(message.content),
+            }
+        )
+    return _safe_json(messages)
+
+
+def _format_output_messages(result: LLMResult) -> str:
+    finish_reason = "tool_call" if result.message.tool_calls else None
+    messages = [
+        {
+            "role": "assistant",
+            "parts": _to_text_parts(result.message.content),
+            "finish_reason": finish_reason,
+        }
+    ]
+    return _safe_json(messages)
+
+
+def _annotate_before_llm_invoke(
+    *,
+    provider_name: str,
+    model: str,
+    prompt_messages: Sequence[PromptMessage],
+    span: object | None = None,
+) -> None:
+    if span is None:
+        from opentelemetry.trace import get_current_span  # pyright: ignore[reportMissingImports]
+
+        span = get_current_span()
+    if not span or not span.is_recording():
+        return
+
+    input_messages = _format_input_messages(prompt_messages)
+    span.set_attribute(_GenAIAttr.PROVIDER_NAME, provider_name)
+    span.set_attribute(_GenAIAttr.OPERATION_NAME, "chat")
+    span.set_attribute(_GenAIAttr.REQUEST_MODEL, model)
+    span.set_attribute(_GenAIAttr.INPUT_MESSAGES, input_messages)
+    span.add_event(
+        "gen_ai.client.inference.operation.details",
+        {_GenAIAttr.INPUT_MESSAGES: input_messages},
+    )
+
+
+def _annotate_after_llm_invoke(result: LLMResult, *, span: object | None = None) -> None:
+    if span is None:
+        from opentelemetry.trace import get_current_span  # pyright: ignore[reportMissingImports]
+
+        span = get_current_span()
+    if not span or not span.is_recording():
+        return
+
+    output_messages = _format_output_messages(result)
+    span.set_attribute(_GenAIAttr.RESPONSE_MODEL, result.model)
+    span.set_attribute(_GenAIAttr.USAGE_INPUT_TOKENS, result.usage.prompt_tokens)
+    span.set_attribute(_GenAIAttr.USAGE_OUTPUT_TOKENS, result.usage.completion_tokens)
+    span.set_attribute(_GenAIAttr.USAGE_TOTAL_TOKENS, result.usage.total_tokens)
+    span.set_attribute(_GenAIAttr.OUTPUT_MESSAGES, output_messages)
+    span.add_event(
+        "gen_ai.client.inference.operation.details",
+        {_GenAIAttr.OUTPUT_MESSAGES: output_messages},
+    )
+
+    if result.message.tool_calls:
+        span.set_attribute(_GenAIAttr.RESPONSE_FINISH_REASONS, ["tool_call"])
 
 
 def _gen_tool_call_id() -> str:
@@ -255,46 +364,55 @@ class LargeLanguageModel(AIModel):
             user=user,
             callbacks=callbacks,
         )
+        from opentelemetry import trace  # pyright: ignore[reportMissingImports]
 
-        result: Union[LLMResult, Generator[LLMResultChunk, None, None]]
+        tracer = trace.get_tracer(__name__)
+        span_name = f"llm.{self.provider_name}.{model}"
+        llm_span = tracer.start_span(name=span_name, kind=trace.SpanKind.CLIENT)
 
-        try:
-            result = _invoke_llm_via_plugin(
-                tenant_id=self.tenant_id,
-                user_id=user or "unknown",
-                plugin_id=self.plugin_id,
-                provider=self.provider_name,
-                model=model,
-                credentials=credentials,
-                model_parameters=model_parameters,
-                prompt_messages=prompt_messages,
-                tools=tools,
-                stop=stop,
-                stream=stream,
-            )
+        if stream:
+            try:
+                with trace.use_span(llm_span, end_on_exit=False):
+                    _annotate_before_llm_invoke(
+                        provider_name=self.provider_name,
+                        model=model,
+                        prompt_messages=prompt_messages,
+                        span=llm_span,
+                    )
 
-            if not stream:
-                result = _normalize_non_stream_plugin_result(
-                    model=model, prompt_messages=prompt_messages, result=result
+                    result = _invoke_llm_via_plugin(
+                        tenant_id=self.tenant_id,
+                        user_id=user or "unknown",
+                        plugin_id=self.plugin_id,
+                        provider=self.provider_name,
+                        model=model,
+                        credentials=credentials,
+                        model_parameters=model_parameters,
+                        prompt_messages=prompt_messages,
+                        tools=tools,
+                        stop=stop,
+                        stream=stream,
+                    )
+            except Exception as e:
+                llm_span.end()
+                self._trigger_invoke_error_callbacks(
+                    model=model,
+                    ex=e,
+                    credentials=credentials,
+                    prompt_messages=prompt_messages,
+                    model_parameters=model_parameters,
+                    tools=tools,
+                    stop=stop,
+                    stream=stream,
+                    user=user,
+                    callbacks=callbacks,
                 )
-        except Exception as e:
-            self._trigger_invoke_error_callbacks(
-                model=model,
-                ex=e,
-                credentials=credentials,
-                prompt_messages=prompt_messages,
-                model_parameters=model_parameters,
-                tools=tools,
-                stop=stop,
-                stream=stream,
-                user=user,
-                callbacks=callbacks,
-            )
+                raise self._transform_invoke_error(e)
 
-            # TODO
-            raise self._transform_invoke_error(e)
+            if isinstance(result, LLMResult):
+                llm_span.end()
+                raise NotImplementedError("unsupported stream invoke result type", type(result))
 
-        if stream and not isinstance(result, LLMResult):
             return self._invoke_result_generator(
                 model=model,
                 result=result,
@@ -306,8 +424,54 @@ class LargeLanguageModel(AIModel):
                 stream=stream,
                 user=user,
                 callbacks=callbacks,
+                llm_span=llm_span,
             )
-        elif isinstance(result, LLMResult):
+
+        with trace.use_span(llm_span, end_on_exit=True):
+            _annotate_before_llm_invoke(
+                provider_name=self.provider_name,
+                model=model,
+                prompt_messages=prompt_messages,
+                span=llm_span,
+            )
+
+            result: Union[LLMResult, Generator[LLMResultChunk, None, None]]
+            try:
+                result = _invoke_llm_via_plugin(
+                    tenant_id=self.tenant_id,
+                    user_id=user or "unknown",
+                    plugin_id=self.plugin_id,
+                    provider=self.provider_name,
+                    model=model,
+                    credentials=credentials,
+                    model_parameters=model_parameters,
+                    prompt_messages=prompt_messages,
+                    tools=tools,
+                    stop=stop,
+                    stream=stream,
+                )
+                result = _normalize_non_stream_plugin_result(
+                    model=model, prompt_messages=prompt_messages, result=result
+                )
+            except Exception as e:
+                self._trigger_invoke_error_callbacks(
+                    model=model,
+                    ex=e,
+                    credentials=credentials,
+                    prompt_messages=prompt_messages,
+                    model_parameters=model_parameters,
+                    tools=tools,
+                    stop=stop,
+                    stream=stream,
+                    user=user,
+                    callbacks=callbacks,
+                )
+                raise self._transform_invoke_error(e)
+
+            if not isinstance(result, LLMResult):
+                raise NotImplementedError("unsupported invoke result type", type(result))
+
+            _annotate_after_llm_invoke(result, span=llm_span)
             self._trigger_after_invoke_callbacks(
                 model=model,
                 result=result,
@@ -325,7 +489,6 @@ class LargeLanguageModel(AIModel):
             # To ensure compatibility, we add the prompt_messages back here.
             result.prompt_messages = prompt_messages
             return result
-        raise NotImplementedError("unsupported invoke result type", type(result))
 
     def _invoke_result_generator(
         self,
@@ -339,6 +502,7 @@ class LargeLanguageModel(AIModel):
         stream: bool = True,
         user: str | None = None,
         callbacks: list[Callback] | None = None,
+        llm_span: object | None = None,
     ) -> Generator[LLMResultChunk, None, None]:
         """
         Invoke result generator
@@ -346,11 +510,18 @@ class LargeLanguageModel(AIModel):
         :param result: result generator
         :return: result generator
         """
+        from opentelemetry import trace  # pyright: ignore[reportMissingImports]
+
         callbacks = callbacks or []
         message_content: list[PromptMessageContentUnionTypes] = []
         usage = None
         system_fingerprint = None
         real_model = model
+        span_context = (
+            trace.use_span(llm_span, end_on_exit=True)
+            if llm_span is not None
+            else trace.use_span(trace.get_current_span(), end_on_exit=False)
+        )
 
         def _update_message_content(content: str | list[PromptMessageContentUnionTypes] | None):
             if not content:
@@ -362,57 +533,60 @@ class LargeLanguageModel(AIModel):
                 message_content.append(TextPromptMessageContent(data=content))
                 return
 
-        try:
-            for chunk in result:
-                # Following https://github.com/langgenius/dify/issues/17799,
-                # we removed the prompt_messages from the chunk on the plugin daemon side.
-                # To ensure compatibility, we add the prompt_messages back here.
-                chunk.prompt_messages = prompt_messages
-                yield chunk
+        with span_context:
+            try:
+                for chunk in result:
+                    # Following https://github.com/langgenius/dify/issues/17799,
+                    # we removed the prompt_messages from the chunk on the plugin daemon side.
+                    # To ensure compatibility, we add the prompt_messages back here.
+                    chunk.prompt_messages = prompt_messages
+                    yield chunk
 
-                self._trigger_new_chunk_callbacks(
-                    chunk=chunk,
-                    model=model,
-                    credentials=credentials,
-                    prompt_messages=prompt_messages,
-                    model_parameters=model_parameters,
-                    tools=tools,
-                    stop=stop,
-                    stream=stream,
-                    user=user,
-                    callbacks=callbacks,
-                )
+                    self._trigger_new_chunk_callbacks(
+                        chunk=chunk,
+                        model=model,
+                        credentials=credentials,
+                        prompt_messages=prompt_messages,
+                        model_parameters=model_parameters,
+                        tools=tools,
+                        stop=stop,
+                        stream=stream,
+                        user=user,
+                        callbacks=callbacks,
+                    )
 
-                _update_message_content(chunk.delta.message.content)
+                    _update_message_content(chunk.delta.message.content)
 
-                real_model = chunk.model
-                if chunk.delta.usage:
-                    usage = chunk.delta.usage
+                    real_model = chunk.model
+                    if chunk.delta.usage:
+                        usage = chunk.delta.usage
 
-                if chunk.system_fingerprint:
-                    system_fingerprint = chunk.system_fingerprint
-        except Exception as e:
-            raise self._transform_invoke_error(e)
+                    if chunk.system_fingerprint:
+                        system_fingerprint = chunk.system_fingerprint
+            except Exception as e:
+                raise self._transform_invoke_error(e)
 
-        assistant_message = AssistantPromptMessage(content=message_content)
-        self._trigger_after_invoke_callbacks(
-            model=model,
-            result=LLMResult(
+            assistant_message = AssistantPromptMessage(content=message_content)
+            final_result = LLMResult(
                 model=real_model,
                 prompt_messages=prompt_messages,
                 message=assistant_message,
                 usage=usage or LLMUsage.empty_usage(),
                 system_fingerprint=system_fingerprint,
-            ),
-            credentials=credentials,
-            prompt_messages=prompt_messages,
-            model_parameters=model_parameters,
-            tools=tools,
-            stop=stop,
-            stream=stream,
-            user=user,
-            callbacks=callbacks,
-        )
+            )
+            self._trigger_after_invoke_callbacks(
+                model=model,
+                result=final_result,
+                credentials=credentials,
+                prompt_messages=prompt_messages,
+                model_parameters=model_parameters,
+                tools=tools,
+                stop=stop,
+                stream=stream,
+                user=user,
+                callbacks=callbacks,
+            )
+            _annotate_after_llm_invoke(final_result, span=llm_span)
 
     def get_num_tokens(
         self,

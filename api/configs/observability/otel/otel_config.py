@@ -32,6 +32,21 @@ class OTelConfig(BaseSettings):
         default="",
     )
 
+    OTLP_HEADERS: str = Field(
+        description="Common OTLP headers (comma-separated key=value pairs)",
+        default="",
+    )
+
+    OTLP_TRACE_HEADERS: str = Field(
+        description="OTLP trace headers (comma-separated key=value pairs)",
+        default="",
+    )
+
+    OTLP_METRIC_HEADERS: str = Field(
+        description="OTLP metric headers (comma-separated key=value pairs)",
+        default="",
+    )
+
     OTEL_EXPORTER_TYPE: str = Field(
         description="OTEL exporter type",
         default="otlp",

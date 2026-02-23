@@ -645,9 +645,16 @@ x-shared-env: &shared-api-worker-env
   OTLP_METRIC_ENDPOINT: ${OTLP_METRIC_ENDPOINT:-}
   OTLP_BASE_ENDPOINT: ${OTLP_BASE_ENDPOINT:-http://localhost:4318}
   OTLP_API_KEY: ${OTLP_API_KEY:-}
+  OTLP_HEADERS: ${OTLP_HEADERS:-}
+  OTLP_TRACE_HEADERS: ${OTLP_TRACE_HEADERS:-}
+  OTLP_METRIC_HEADERS: ${OTLP_METRIC_HEADERS:-}
+  OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: ${OTEL_EXPORTER_OTLP_TRACES_PROTOCOL:-}
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+  OTEL_EXPORTER_OTLP_TRACES_HEADERS: ${OTEL_EXPORTER_OTLP_TRACES_HEADERS:-}
   OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-}
   OTEL_EXPORTER_TYPE: ${OTEL_EXPORTER_TYPE:-otlp}
   OTEL_SAMPLING_RATE: ${OTEL_SAMPLING_RATE:-0.1}
+  OTEL_SEMCONV_STABILITY_OPT_IN: ${OTEL_SEMCONV_STABILITY_OPT_IN:-}
   OTEL_BATCH_EXPORT_SCHEDULE_DELAY: ${OTEL_BATCH_EXPORT_SCHEDULE_DELAY:-5000}
   OTEL_MAX_QUEUE_SIZE: ${OTEL_MAX_QUEUE_SIZE:-2048}
   OTEL_MAX_EXPORT_BATCH_SIZE: ${OTEL_MAX_EXPORT_BATCH_SIZE:-512}
@@ -716,7 +723,7 @@ services:
 
   # API service
   api:
-    image: langgenius/dify-api:1.13.0
+    image: ${DIFY_API_IMAGE:-langgenius/dify-api:1.13.0}
     restart: always
     environment:
       # Use the shared environment variables.
@@ -760,7 +767,7 @@ services:
   # worker service
   # The Celery worker for processing all queues (dataset, workflow, mail, etc.)
   worker:
-    image: langgenius/dify-api:1.13.0
+    image: ${DIFY_API_IMAGE:-langgenius/dify-api:1.13.0}
     restart: always
     environment:
       # Use the shared environment variables.
@@ -801,7 +808,7 @@ services:
   # worker_beat service
   # Celery beat for scheduling periodic tasks.
   worker_beat:
-    image: langgenius/dify-api:1.13.0
+    image: ${DIFY_API_IMAGE:-langgenius/dify-api:1.13.0}
     restart: always
     environment:
       # Use the shared environment variables.
