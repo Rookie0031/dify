@@ -13,6 +13,7 @@ import BrowserInitializer from './components/browser-initializer'
 import { ReactScanLoader } from './components/devtools/react-scan/loader'
 import { I18nServerProvider } from './components/provider/i18n-server'
 import { PWAProvider } from './components/provider/serwist'
+import DatadogRumInitializer from './components/datadog-rum-initializer'
 import SentryInitializer from './components/sentry-initializer'
 import RoutePrefixHandle from './routePrefixHandle'
 import './styles/globals.css'
@@ -72,8 +73,9 @@ const LocaleLayout = async ({
             >
               <NuqsAdapter>
                 <BrowserInitializer>
-                  <SentryInitializer>
-                    <TanstackQueryInitializer>
+                  <DatadogRumInitializer>
+                    <SentryInitializer>
+                      <TanstackQueryInitializer>
                       <I18nServerProvider>
                         <ToastProvider>
                           <GlobalPublicStoreProvider>
@@ -81,8 +83,9 @@ const LocaleLayout = async ({
                           </GlobalPublicStoreProvider>
                         </ToastProvider>
                       </I18nServerProvider>
-                    </TanstackQueryInitializer>
-                  </SentryInitializer>
+                      </TanstackQueryInitializer>
+                    </SentryInitializer>
+                  </DatadogRumInitializer>
                 </BrowserInitializer>
               </NuqsAdapter>
             </ThemeProvider>

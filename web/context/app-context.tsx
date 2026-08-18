@@ -7,6 +7,7 @@ import { noop } from 'es-toolkit/function'
 import { useCallback, useEffect, useMemo } from 'react'
 import { createContext, useContext, useContextSelector } from 'use-context-selector'
 import { setUserId, setUserProperties } from '@/app/components/base/amplitude'
+import { datadogRum } from '@datadog/browser-rum'
 import { setZendeskConversationFields } from '@/app/components/base/zendesk/utils'
 import MaintenanceNotice from '@/app/components/header/maintenance-notice'
 import { ZENDESK_FIELD_IDS } from '@/config'
@@ -185,6 +186,19 @@ export const AppContextProvider: FC<AppContextProviderProps> = ({ children }) =>
       }
 
       setUserProperties(properties)
+
+      datadogRum.setUser({
+        id: userProfile.id,
+        name: userProfile.name,
+        email: userProfile.email,
+        workspace_id: currentWorkspace?.id,
+        workspace_role: currentWorkspace?.role,
+      })
+      console.log('[DatadogRUM] setUser:', { id: userProfile.id, name: userProfile.name, email: userProfile.email })
+    }
+    else {
+      datadogRum.clearUser()
+      console.log('[DatadogRUM] clearUser: no user profile')
     }
   }, [userProfile, currentWorkspace])
 

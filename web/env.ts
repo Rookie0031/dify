@@ -50,6 +50,12 @@ const clientSchema = {
    */
   NEXT_PUBLIC_CSP_WHITELIST: z.string().optional(),
   /**
+   * Datadog RUM
+   */
+  NEXT_PUBLIC_DD_RUM_APPLICATION_ID: z.string().optional(),
+  NEXT_PUBLIC_DD_RUM_CLIENT_TOKEN: z.string().optional(),
+  NEXT_PUBLIC_DD_RUM_SITE: z.string().default('datadoghq.com'),
+  /**
    * For production release, change this to PRODUCTION
    */
   NEXT_PUBLIC_DEPLOY_ENV: z.enum(['DEVELOPMENT', 'PRODUCTION', 'TESTING']).optional(),
@@ -167,6 +173,9 @@ export const env = createEnv({
     NEXT_PUBLIC_BATCH_CONCURRENCY: isServer ? process.env.NEXT_PUBLIC_BATCH_CONCURRENCY : getRuntimeEnvFromBody('batchConcurrency'),
     NEXT_PUBLIC_COOKIE_DOMAIN: isServer ? process.env.NEXT_PUBLIC_COOKIE_DOMAIN : getRuntimeEnvFromBody('cookieDomain'),
     NEXT_PUBLIC_CSP_WHITELIST: isServer ? process.env.NEXT_PUBLIC_CSP_WHITELIST : getRuntimeEnvFromBody('cspWhitelist'),
+    NEXT_PUBLIC_DD_RUM_APPLICATION_ID: isServer ? process.env.NEXT_PUBLIC_DD_RUM_APPLICATION_ID : getRuntimeEnvFromBody('ddRumApplicationId'),
+    NEXT_PUBLIC_DD_RUM_CLIENT_TOKEN: isServer ? process.env.NEXT_PUBLIC_DD_RUM_CLIENT_TOKEN : getRuntimeEnvFromBody('ddRumClientToken'),
+    NEXT_PUBLIC_DD_RUM_SITE: isServer ? process.env.NEXT_PUBLIC_DD_RUM_SITE : getRuntimeEnvFromBody('ddRumSite'),
     NEXT_PUBLIC_DEPLOY_ENV: isServer ? process.env.NEXT_PUBLIC_DEPLOY_ENV : getRuntimeEnvFromBody('deployEnv'),
     NEXT_PUBLIC_DISABLE_UPLOAD_IMAGE_AS_ICON: isServer ? process.env.NEXT_PUBLIC_DISABLE_UPLOAD_IMAGE_AS_ICON : getRuntimeEnvFromBody('disableUploadImageAsIcon'),
     NEXT_PUBLIC_EDITION: isServer ? process.env.NEXT_PUBLIC_EDITION : getRuntimeEnvFromBody('edition'),

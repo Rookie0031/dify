@@ -59,6 +59,9 @@ importers:
       '@amplitude/plugin-session-replay-browser':
         specifier: 1.23.6
         version: 1.23.6(@amplitude/rrweb@2.0.0-alpha.35)(rollup@4.56.0)
+      '@datadog/browser-rum':
+        specifier: 6.30.1
+        version: 6.30.1
       '@emoji-mart/data':
         specifier: 1.2.1
         version: 1.2.1
@@ -950,6 +953,20 @@ packages:
   '@csstools/css-tokenizer@3.0.4':
     resolution: {integrity: sha512-Vd/9EVDiu6PPJt9yAh6roZP6El1xHrdvIVGjyBsHR0RYwNHgL7FJPyIIW4fANJNG6FtyZfvlRPpFI4ZM/lubvw==}
     engines: {node: '>=18'}
+
+  '@datadog/browser-core@6.30.1':
+    resolution: {integrity: sha512-udXaUdjFld/UkdaH69oVWzDYILRqTdSXobVGnmcsqPvC5VBqdhunl0cR+t1k0oJgJndabqCFY/zluJ+joTOdaA==}
+
+  '@datadog/browser-rum-core@6.30.1':
+    resolution: {integrity: sha512-U7TxRz5MuvLACfuskP4gGZk3ghSniEzkrhDNJeUXdA9+TZZLyrsZYBT9n6NuZTL1qTM5NNeK89e49kLUVI3Tiw==}
+
+  '@datadog/browser-rum@6.30.1':
+    resolution: {integrity: sha512-XwY+BQZ1Zh+zFHIX9E14O8w0asuAaI/K15qFvX7psdVfeTf27WCzlJpzhaYJC+qXn3Pys0uR5ioPWgRcliAFjw==}
+    peerDependencies:
+      '@datadog/browser-logs': 6.30.1
+    peerDependenciesMeta:
+      '@datadog/browser-logs':
+        optional: true
 
   '@egoist/tailwindcss-icons@1.9.2':
     resolution: {integrity: sha512-I6XsSykmhu2cASg5Hp/ICLsJ/K/1aXPaSKjgbWaNp2xYnb4We/arWMmkhhV+9CglOFCUbqx0A3mM2kWV32ZIhw==}
@@ -8222,6 +8239,17 @@ snapshots:
   '@csstools/css-syntax-patches-for-csstree@1.0.26': {}
 
   '@csstools/css-tokenizer@3.0.4': {}
+
+  '@datadog/browser-core@6.30.1': {}
+
+  '@datadog/browser-rum-core@6.30.1':
+    dependencies:
+      '@datadog/browser-core': 6.30.1
+
+  '@datadog/browser-rum@6.30.1':
+    dependencies:
+      '@datadog/browser-core': 6.30.1
+      '@datadog/browser-rum-core': 6.30.1
 
   '@egoist/tailwindcss-icons@1.9.2(tailwindcss@3.4.19(tsx@4.21.0)(yaml@2.8.2))':
     dependencies:

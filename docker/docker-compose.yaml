@@ -827,7 +827,10 @@ services:
 
   # Frontend web application.
   web:
-    image: langgenius/dify-web:1.13.0
+    container_name: dify-web-rum-test
+    build:
+      context: ../web
+      dockerfile: Dockerfile
     restart: always
     environment:
       CONSOLE_API_URL: ${CONSOLE_API_URL:-}
